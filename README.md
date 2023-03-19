@@ -3,9 +3,17 @@
 [![Python versions][python-shield]][python-url]
 [![Platforms][platform-shield]][python-url]
 
-# guideseq: The GUIDE-Seq Analysis Package
+# guideseq: The GUIDE-Seq Analysis Package - A Parallelized Version
 
-The guideseq package implements our data preprocessing and analysis pipeline for GUIDE-Seq data. It takes raw sequencing reads (FASTQ) and a parameter manifest file (.yaml) as input and produces a table of annotated off-target sites as output.
+The guideseq package implements Shengdar Q Tsai lab data preprocessing and analysis pipeline for GUIDE-Seq data. It takes raw sequencing reads (FASTQ) and a parameter manifest file (.yaml) as input and produces a table of annotated off-target sites as output. In This version, We added the following:
+- Support in multi-processing in UMItag, Consolidate, and Align steps. This is essential as the pipeline can take days for big FASTQ files.
+    - To run the pipeline with N processes, add the flag `--n_workers N` to the execution command.
+- Skipping some steps in the GUIDE-Seq pipeline. It is useful when partial steps are already completed.
+    - To run the pipeline starting from the stage after demultiplexing/UMItaging/consolidating/aligning, add the flag `--skip_demultiple`/`--skip_umitag`/`--skip_consolidate`/`--skip_align` to the execution command.
+
+See [Getting Set Up](#setup) and [Running the Full Analysis Pipeline](#full_pipeline) for the recommended install for this version and an example of an execution command.
+
+If you have a disk space problem with your system /temp folder, you can change its default location by changing the environment variable `TMPDIR` (for example, in CentOS, `export TMPDIR=/new/temp/folder/path`).
 
 ## Table of Contents
 - [Features](#features)
@@ -61,7 +69,7 @@ The individual pipeline steps are:
 
 ### Installation<a name="Installation"></a>
 
-The most easiest way to install guideseq pipeline is via conda.
+The easiest way to install this guideseq pipeline version is to install the original version via conda (it will install the dependencies required), then clone this repository and run the pipeline locally.
 
 ```
 
@@ -69,18 +77,25 @@ conda create -n guideseq -c conda-forge -c bioconda -c anaconda -c tsailabSJ gui
 
 source activate guideseq
 
-guideseq.py -h
-
 ## BWA and bedtools are automatically installed
 
 
 ```
 
+Then git clone git clone this repository
+
+```
+
+git clone https://github.com/ofiryaish/guideseq_parallelized.git
+
+```
+
+
 Alternatively, you can git clone this repository and install
 
 ```
 
-git clone https://github.com/tsailabSJ/guideseq
+git clone https://github.com/ofiryaish/guideseq_parallelized.git
 
 cd guideseq
 
@@ -103,13 +118,15 @@ For both bwa and bedtools, make sure you know the path to the respective executa
 
 ### Quickstart <a name="Quickstart"></a>
 
+Example of execution command of this version (tested in background run)
 ```
+# if repository was not cloned already clone it
+git clone https://github.com/ofiryaish/guideseq_parallelized.git
 
-git clone https://github.com/tsailabSJ/guideseq
+cd guideseq_parallelized/test
 
-cd guideseq/test
-
-guideseq.py all -m test_manifest.yaml
+# run the pipeline with 10 workers
+python ../guideseq/guideseq.py all -m test_manifest.yaml --n_workers 10 &
 
 ```
 
@@ -120,21 +137,12 @@ guideseq.py all -m test_manifest.yaml
 To run the full guideseq analysis pipeline, you must first create a manifest YAML file that describes all pipeline inputs. Once you have done so, you can simply run
 
 ```
-guideseq.py all -m /path/to/manifest.yaml
+python /path/to/cloned/guideseq_parallelized/repository/guideseq/guideseq.py all -m /path/to/manifest.yaml --n_workers 10 &
 ```
 
 to run the entire pipeline. Below are specific instructions detailing how to write the manifest file.
 
-If you wish to run an example on our abridged test data, you can simply run
-
-```
-
-cd guideseq/test
-
-
-guideseq.py all -m test_manifest.yaml
-```
-from the guideseq root directory. The `test_manifest` assumes that both the `bwa` and `bedtools`executables are in your system PATH. You will see the pipeline results outputted to the `test/output` folder.
+from the guideseq root directory. The `/path/to/manifest.yaml` assumes that both the `bwa` and `bedtools`executables are in your system PATH. You will see the pipeline results outputted to the `output` folder defined in the YAML file.
 
 ### Writing A Manifest File<a name="write_manifest"></a>
 When running the end-to-end analysis functionality of the guideseq package, a number of inputs are required. To simplify the formatting of these inputs and to encourage reproducibility, these parameters are inputted into the pipeline via a manifest formatted as a YAML file. YAML files allow easy-to-read specification of key-value pairs. This allows us to easily specify our parameters. The following fields are required in the manifest:

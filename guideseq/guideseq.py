@@ -7,7 +7,7 @@ guideseq.py
 serves as the wrapper for all guideseq pipeline
 
 """
-
+import time
 import os
 import sys
 import yaml
@@ -18,12 +18,14 @@ import traceback
 import log
 logger = log.createCustomLogger('root')
 
-from alignReads import alignReads
+from alignReads import alignReads, index
 from filterBackgroundSites import filterBackgroundSites
 from umi import demultiplex, umitag, consolidate
 from visualization import visualizeOfftargets
 import identifyOfftargetSites
 import validation
+
+import multiprocessing
 
 DEFAULT_DEMULTIPLEX_MIN_READS = 10000
 DEFAULT_WINDOW_SIZE = 25
@@ -32,13 +34,17 @@ DEFAULT_MAX_SCORE = 7
 CONSOLIDATE_MIN_QUAL = 15
 CONSOLIDATE_MIN_FREQ = 0.9
 
+def consolidate_util(fastq_file_read1, consolidated_fastq_file_read1, fastq_file_read2,
+                         consolidated_fastq_file_read2, min_qual, min_freq):
+        consolidate.consolidate(fastq_file_read1, consolidated_fastq_file_read1, min_qual, min_freq)
+        consolidate.consolidate(fastq_file_read2, consolidated_fastq_file_read2, min_qual, min_freq)
+
 
 class GuideSeq:
-
     def __init__(self):
         pass
 
-    def parseManifest(self, manifest_path):
+    def parseManifest(self, manifest_path, without_contorl):
         logger.info('Loading manifest...')
 
         with open(manifest_path, 'r') as f:
@@ -80,13 +86,17 @@ class GuideSeq:
         else:
             self.PAM = "NGG"
 
-        # Make sure the user has specified a control barcode
-        if 'control' not in self.samples.keys():
-            raise AssertionError('Your manifest must have a control sample specified.')
+        if without_contorl:
+            if len(self.samples) < 1:
+                raise AssertionError('Your manifest does not contain any samples.')
+        else:
+            # Make sure the user has specified a control barcode
+            if 'control' not in self.samples.keys():
+                raise AssertionError('Your manifest must have a control sample specified.')
 
-        # Make sure the user has both a sample and a control
-        if len(self.samples) < 2:
-            raise AssertionError('Your manifest must have at least one control and one treatment sample.')
+            # Make sure the user has both a sample and a control
+            if len(self.samples) < 2:
+                raise AssertionError('Your manifest must have at least one control and one treatment sample.')
 
         logger.info('Successfully loaded manifest.')
 
@@ -114,7 +124,6 @@ class GuideSeq:
         logger.info('Successfully loaded manifest for single-step demultiplexing.')
 
     def demultiplex(self):
-
         logger.info('Demultiplexing undemultiplexed files...')
 
         # Take our two barcodes and concatenate them
@@ -148,64 +157,82 @@ class GuideSeq:
             logger.error(traceback.format_exc())
             quit()
 
-    def umitag(self):
+    def umitag(self, num_processes=20):
         logger.info('umitagging reads...')
-
         try:
+            pool = multiprocessing.Pool(processes=num_processes)
+
             self.umitagged = {}
             for sample in self.samples:
                 self.umitagged[sample] = {}
                 self.umitagged[sample]['read1'] = os.path.join(self.output_folder, 'umitagged', sample + '.r1.umitagged.fastq')
                 self.umitagged[sample]['read2'] = os.path.join(self.output_folder, 'umitagged', sample + '.r2.umitagged.fastq')
 
-                umitag.umitag(self.demultiplexed[sample]['read1'],
-                              self.demultiplexed[sample]['read2'],
-                              self.demultiplexed[sample]['index1'],
-                              self.demultiplexed[sample]['index2'],
-                              self.umitagged[sample]['read1'],
-                              self.umitagged[sample]['read2'],
-                              os.path.join(self.output_folder, 'umitagged'))
 
+                pool.apply_async(umitag.umitag, args=(
+                    self.demultiplexed[sample]['read1'],
+                    self.demultiplexed[sample]['read2'],
+                    self.demultiplexed[sample]['index1'],
+                    self.demultiplexed[sample]['index2'],
+                    self.umitagged[sample]['read1'],
+                    self.umitagged[sample]['read2'],
+                    os.path.join(self.output_folder, 'umitagged')))
+                time.sleep(15) # Sleep for 15 seconds
+
+            pool.close()
+            pool.join()
             logger.info('Successfully umitagged reads.')
         except Exception as e:
             logger.error('Error umitagging')
             logger.error(traceback.format_exc())
             quit()
 
-    def consolidate(self, min_freq=CONSOLIDATE_MIN_FREQ, min_qual=CONSOLIDATE_MIN_QUAL):
+    def consolidate(self, min_freq=CONSOLIDATE_MIN_FREQ, min_qual=CONSOLIDATE_MIN_QUAL, num_processes=20):
         logger.info('Consolidating reads...')
-
         try:
+            pool = multiprocessing.Pool(processes=num_processes)
+
             self.consolidated = {}
 
             for sample in self.samples:
+                print(sample)
                 self.consolidated[sample] = {}
                 self.consolidated[sample]['read1'] = os.path.join(self.output_folder, 'consolidated', sample + '.r1.consolidated.fastq')
                 self.consolidated[sample]['read2'] = os.path.join(self.output_folder, 'consolidated', sample + '.r2.consolidated.fastq')
 
-                consolidate.consolidate(self.umitagged[sample]['read1'], self.consolidated[sample]['read1'], min_qual, min_freq)
-                consolidate.consolidate(self.umitagged[sample]['read2'], self.consolidated[sample]['read2'], min_qual, min_freq)
+                pool.apply_async(consolidate_util, args=(
+                    self.umitagged[sample]['read1'], self.consolidated[sample]['read1'],
+                    self.umitagged[sample]['read2'], self.consolidated[sample]['read2'],
+                    min_qual, min_freq))
+                time.sleep(15) # Sleep for 15 seconds
 
+            pool.close()
+            pool.join()
             logger.info('Successfully consolidated reads.')
         except Exception as e:
             logger.error('Error umitagging')
             logger.error(traceback.format_exc())
             quit()
 
-    def alignReads(self):
+    def alignReads(self, num_processes=20):
         logger.info('Aligning reads...')
-
         try:
+            index(self.reference_genome, self.BWA_path)
+            pool = multiprocessing.Pool(processes=num_processes)
+            
             self.aligned = {}
             for sample in self.samples:
                 sample_alignment_path = os.path.join(self.output_folder, 'aligned', sample + '.sam')
-                alignReads(self.BWA_path,
-                           self.reference_genome,
-                           self.consolidated[sample]['read1'],
-                           self.consolidated[sample]['read2'],
-                           sample_alignment_path)
                 self.aligned[sample] = sample_alignment_path
-                logger.info('Finished aligning reads to genome.')
+                pool.apply_async(alignReads, args=(self.BWA_path, self.reference_genome,
+                                                   self.consolidated[sample]['read1'],
+                                                   self.consolidated[sample]['read2'],
+                                                   sample_alignment_path))
+                time.sleep(15) # Sleep for 15 seconds
+
+            pool.close()
+            pool.join()
+            logger.info('Finished aligning reads to genome.')
 
         except Exception as e:
             logger.error('Error aligning')
@@ -217,7 +244,6 @@ class GuideSeq:
 
         try:
             self.identified = {}
-
             # Identify offtarget sites for each sample
             for sample in self.samples:
 
@@ -267,20 +293,6 @@ class GuideSeq:
 
     def visualize(self):
         logger.info('Visualizing off-target sites')
-
-        # try:
-            # for sample in self.samples:
-                # if sample != 'control':
-                    # infile = self.identified[sample]
-                    # outfile = os.path.join(self.output_folder, 'visualization', sample + '_offtargets')
-                    # visualizeOfftargets(infile, outfile, title=sample)
-
-            # logger.info('Finished visualizing off-target sites')
-
-        # except Exception as e:
-            # logger.error('Error visualizing off-target sites.')
-            # logger.error(traceback.format_exc())
-
         for sample in self.samples: ## 3/6/2020 Yichao solved: visualization stopped when one sample failed
             if sample != 'control':
                 try:
@@ -296,6 +308,7 @@ class GuideSeq:
                     logger.error(traceback.format_exc())
         logger.info('Finished visualizing off-target sites')
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -307,6 +320,11 @@ def parse_args():
     all_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
     all_parser.add_argument('--identifyAndFilter', action='store_true', default=False)
     all_parser.add_argument('--skip_demultiplex', action='store_true', default=False)
+    all_parser.add_argument('--skip_umitag', action='store_true', default=False)
+    all_parser.add_argument('--skip_consolidate', action='store_true', default=False)
+    all_parser.add_argument('--skip_align', action='store_true', default=False)
+    all_parser.add_argument('--without_contorl', action='store_true', default=False)
+    all_parser.add_argument('--n_workers', action='store_true', default=1, type=int)
 
     demultiplex_parser = subparsers.add_parser('demultiplex', help='Demultiplex undemultiplexed FASTQ files')
     demultiplex_parser.add_argument('--manifest', '-m', help='Specify the manifest path', required=True)
@@ -355,81 +373,169 @@ def parse_args():
     return parser.parse_args()
 
 
+def load_demultiplexed(args):
+    g = GuideSeq()
+    g.parseManifest(args.manifest, args.without_contorl)
+    g.demultiplexed = {}
+    for sample in g.samples:
+        g.demultiplexed[sample] = {}
+        g.demultiplexed[sample]['read1'] = os.path.join(g.output_folder, 'demultiplexed', sample + '.r1.fastq')
+        g.demultiplexed[sample]['read2'] = os.path.join(g.output_folder, 'demultiplexed', sample + '.r2.fastq')
+        g.demultiplexed[sample]['index1'] = os.path.join(g.output_folder, 'demultiplexed', sample + '.i1.fastq')
+        g.demultiplexed[sample]['index2'] = os.path.join(g.output_folder, 'demultiplexed', sample + '.i2.fastq')
+        if not os.path.isfile(g.demultiplexed[sample]['read1']):
+            print ("Can't find ", g.demultiplexed[sample]['read1'])
+            exit()
+        if not os.path.isfile(g.demultiplexed[sample]['read2']):
+            print ("Can't find ", g.demultiplexed[sample]['read2'])
+            exit()
+        if not os.path.isfile(g.demultiplexed[sample]['index1']):
+            print ("Can't find ", g.demultiplexed[sample]['index1'])
+            exit()
+        if not os.path.isfile(g.demultiplexed[sample]['index2']):
+            print ("Can't find ", g.demultiplexed[sample]['index2'])
+            exit()
+
+    return g
+
+
+def load_umitagged(g):
+    g.umitagged = {}
+    for sample in g.samples:
+        g.umitagged[sample] = {}
+        g.umitagged[sample]['read1'] = os.path.join(g.output_folder, 'umitagged', sample + '.r1.umitagged.fastq')
+        g.umitagged[sample]['read2'] = os.path.join(g.output_folder, 'umitagged', sample + '.r2.umitagged.fastq')
+        if not os.path.isfile(g.umitagged[sample]['read1']):
+            print ("Can't find ", g.umitagged[sample]['read1'])
+            exit()
+        if not os.path.isfile(g.umitagged[sample]['read2']):
+            print ("Can't find ", g.umitagged[sample]['read2'])
+            exit()
+
+
+def load_consolidate(g):
+    g.consolidated = {}
+    for sample in g.samples:
+        print(sample)
+        g.consolidated[sample] = {}
+        g.consolidated[sample]['read1'] = os.path.join(g.output_folder, 'consolidated', sample + '.r1.consolidated.fastq')
+        g.consolidated[sample]['read2'] = os.path.join(g.output_folder, 'consolidated', sample + '.r2.consolidated.fastq')
+        if not os.path.isfile(g.consolidated[sample]['read1']):
+            print ("Can't find ", g.consolidated[sample]['read1'])
+            exit()
+        if not os.path.isfile(g.consolidated[sample]['read2']):
+            print ("Can't find ", g.consolidated[sample]['read2'])
+            exit()
+
+def load_align(g):
+    g.aligned = {}
+    for sample in g.samples:
+        sample_alignment_path = os.path.join(g.output_folder, 'aligned', sample + '.sam')
+        g.aligned[sample] = sample_alignment_path
+        if not os.path.isfile(g.aligned[sample]):
+            print ("Can't find ", g.aligned[sample])
+            exit()
+
+
 def main():
     args = parse_args()
-
+    # print("waiting some time")
+    # time.sleep(3600*10)
+    # print("end wait time")
     if args.command == 'all':
-
         if args.identifyAndFilter:
             try:
                 g = GuideSeq()
-                g.parseManifest(args.manifest)
-
-                # Bootstrap the aligned samfile paths
-                g.aligned = {}
-                for sample in g.samples:
-                    g.aligned[sample] = os.path.join(g.output_folder, 'aligned', sample + '.sam')
+                g.parseManifest(args.manifest, args.without_contorl)
+                load_align(g)
 
                 g.identifyOfftargetSites()
-                g.filterBackgroundSites()
+                if args.without_contorl:
+                     logger.info('skipping filter background sites as not control is provided.')
+                else:
+                    g.filterBackgroundSites()
                 g.visualize()
-
             except Exception as e:
                 print ('Error running only identify and filter.')
                 print (traceback.format_exc())
                 quit()
         elif args.skip_demultiplex:
             try:
-                g = GuideSeq()
-                g.parseManifest(args.manifest)
-                g.demultiplexed = {}
-                for sample in g.samples:
-                    g.demultiplexed[sample] = {}
-                    g.demultiplexed[sample]['read1'] = os.path.join(g.output_folder, 'demultiplexed', sample + '.r1.fastq')
-                    g.demultiplexed[sample]['read2'] = os.path.join(g.output_folder, 'demultiplexed', sample + '.r2.fastq')
-                    g.demultiplexed[sample]['index1'] = os.path.join(g.output_folder, 'demultiplexed', sample + '.i1.fastq')
-                    g.demultiplexed[sample]['index2'] = os.path.join(g.output_folder, 'demultiplexed', sample + '.i2.fastq')
-                    if not os.path.isfile(g.demultiplexed[sample]['read1']):
-                        print ("Can't find ",g.demultiplexed[sample]['read1'])
-                        exit()
-                    if not os.path.isfile(g.demultiplexed[sample]['read2']):
-                        print ("Can't find ",g.demultiplexed[sample]['read2'])
-                        exit()
-                    if not os.path.isfile(g.demultiplexed[sample]['index1']):
-                        print ("Can't find ",g.demultiplexed[sample]['index1'])
-                        exit()
-                    if not os.path.isfile(g.demultiplexed[sample]['index2']):
-                        print ("Can't find ",g.demultiplexed[sample]['index2'])
-                        exit()
-
-                # Bootstrap the aligned samfile paths
-                # g.aligned = {}
-                # for sample in g.samples:
-                    # g.aligned[sample] = os.path.join(g.output_folder, 'aligned', sample + '.sam')
-
-
-                g.umitag()
-                g.consolidate()
-                g.alignReads()
+                g = load_demultiplexed(args)
+                g.umitag(num_processes=args.n_workers)
+                g.consolidate(num_processes=args.n_workers)
+                g.alignReads(num_processes=args.n_workers)
                 g.identifyOfftargetSites()
-                g.filterBackgroundSites()
+                if args.without_contorl:
+                     logger.info('skipping filter background sites as not control is provided.')
+                else:
+                    g.filterBackgroundSites()
                 g.visualize()
-
+            except Exception as e:
+                print ('Error running only identify and filter.')
+                print (traceback.format_exc())
+                quit()
+        elif args.skip_umitag:
+            try:
+                g = load_demultiplexed(args)
+                load_umitagged(g)
+                g.consolidate(num_processes=args.n_workers)
+                g.alignReads(num_processes=args.n_workers)
+                g.identifyOfftargetSites()
+                if args.without_contorl:
+                     logger.info('skipping filter background sites as not control is provided.')
+                else:
+                    g.filterBackgroundSites()
+                g.visualize()
+            except Exception as e:
+                print ('Error running only identify and filter.')
+                print (traceback.format_exc())
+                quit()
+        elif args.skip_consolidate:
+            try:
+                g = load_demultiplexed(args)
+                load_umitagged(g)
+                load_consolidate(g)
+                g.alignReads(num_processes=args.n_workers)
+                g.identifyOfftargetSites()
+                if args.without_contorl:
+                    logger.info('skipping filter background sites as not control is provided.')
+                else:
+                    g.filterBackgroundSites()
+                g.visualize()
+            except Exception as e:
+                print ('Error running only identify and filter.')
+                print (traceback.format_exc())
+                quit()
+        elif args.skip_align:
+            try:
+                g = load_demultiplexed(args)
+                load_umitagged(g)
+                load_consolidate(g)
+                load_align(g)
+                g.identifyOfftargetSites()
+                if args.without_contorl:
+                    logger.info('skipping filter background sites as not control is provided.')
+                else:
+                    g.filterBackgroundSites()
+                g.visualize()
             except Exception as e:
                 print ('Error running only identify and filter.')
                 print (traceback.format_exc())
                 quit()
         else:
             g = GuideSeq()
-            g.parseManifest(args.manifest)
+            g.parseManifest(args.manifest, args.without_contorl)
             g.demultiplex()
-            g.umitag()
-            g.consolidate()
-            g.alignReads()
+            g.umitag(num_processes=args.n_workers)
+            g.consolidate(num_processes=args.n_workers)
+            g.alignReads(num_processes=args.n_workers)
             g.identifyOfftargetSites()
-            g.filterBackgroundSites()
+            if args.without_contorl:
+                logger.info('skipping filter background sites as not control is provided.')
+            else:
+                g.filterBackgroundSites()
             g.visualize()
-
     elif args.command == 'demultiplex':
         """
         Run just the demultiplex step given the manifest
@@ -437,7 +543,6 @@ def main():
         g = GuideSeq()
         g.parseManifestDemultiplex(args.manifest)
         g.demultiplex()
-
     elif args.command == 'umitag':
         """
         Run just the umitag step
@@ -452,8 +557,7 @@ def main():
         g.demultiplexed[sample]['read2'] = args.read2
         g.demultiplexed[sample]['index1'] = args.index1
         g.demultiplexed[sample]['index2'] = args.index2
-        g.umitag()
-
+        g.umitag(num_processes=args.n_workers)
     elif args.command == 'consolidate':
         """
         Run just the consolidate step
@@ -477,8 +581,7 @@ def main():
         else:
             min_freq = CONSOLIDATE_MIN_FREQ
 
-        g.consolidate(min_freq=min_freq, min_qual=min_qual)
-
+        g.consolidate(min_freq=min_freq, min_qual=min_qual, num_processes=args.n_workers)
     elif args.command == 'align':
         """
         Run just the alignment step
@@ -493,8 +596,7 @@ def main():
         g.consolidated = {sample: {}}
         g.consolidated[sample]['read1'] = args.read1
         g.consolidated[sample]['read2'] = args.read2
-        g.alignReads()
-
+        g.alignReads(num_processes=args.n_workers)
     elif args.command == 'identify':
         """
         Run just the identify step
@@ -539,7 +641,6 @@ def main():
         g.identified[sample] = args.identified
         g.identified['control'] = args.background
         g.filterBackgroundSites()
-
     elif args.command == 'visualize':
         """
         Run just the visualize step
