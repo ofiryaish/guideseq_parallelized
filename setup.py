@@ -15,10 +15,10 @@ else:
 setup(
 	name='guide_seq',
 	version=str(guideseq.__version__),
-	description="An easy to use bioinformatic pipeline for the GUIDE-seq assay.",
+	description="An easy to use bioinformatic pipeline for the GUIDE-seq assay. A Parallelized version",
 	author="Shengdar Q Tsai, Martin Aryee, Ved V Topkar",
 	author_email='STSAI4@mgh.harvard.edu, Aryee.Martin@mgh.harvard.edu, vedtopkar@gmail.com',
-	url='https://github.com/tsailabSJ/guideseq',
+	url='https://github.com/ofiryaish/guideseq_parallelized.git',
 	# packages=find_packages(),
 	packages=[
 		'guideseq',

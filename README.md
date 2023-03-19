@@ -96,7 +96,7 @@ Alternatively, you can git clone this repository and install
 
 git clone https://github.com/ofiryaish/guideseq_parallelized.git
 
-cd guideseq
+cd guideseq_parallelized
 
 pip install -r requirements.txt
 
