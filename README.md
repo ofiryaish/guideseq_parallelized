@@ -141,7 +141,7 @@ python /path/to/cloned/guideseq_parallelized/repository/guideseq/guideseq.py all
 
 to run the entire pipeline. Below are specific instructions detailing how to write the manifest file.
 
-from the guideseq root directory. The `/path/to/manifest.yaml` assumes that both the `bwa` and `bedtools`executables are in your system PATH. You will see the pipeline results outputted to the `output` folder defined in the YAML file.
+from the guideseq root directory. The `/path/to/manifest.yaml` assumes that both the `bwa` and `bedtools`executables are in your system PATH. You will see the pipeline results outputted to the `output_folder` defined in the YAML file.
 
 ### Writing A Manifest File<a name="write_manifest"></a>
 When running the end-to-end analysis functionality of the guideseq package, a number of inputs are required. To simplify the formatting of these inputs and to encourage reproducibility, these parameters are inputted into the pipeline via a manifest formatted as a YAML file. YAML files allow easy-to-read specification of key-value pairs. This allows us to easily specify our parameters. The following fields are required in the manifest:
