@@ -5,11 +5,11 @@
 
 # guideseq: The GUIDE-Seq Analysis Package - A Parallelized Version
 
-The guideseq package implements Shengdar Q Tsai lab data preprocessing and analysis pipeline for GUIDE-Seq data. It takes raw sequencing reads (FASTQ) and a parameter manifest file (.yaml) as input and produces a table of annotated off-target sites as output. In This version, We added the following:
-- Support in multi-processing in UMItag, Consolidate, and Align steps. This is essential as the pipeline can take days for big FASTQ files.
+The guideseq package implements Shengdar Q Tsai lab data preprocessing and analysis pipeline for GUIDE-Seq data. It takes raw sequencing reads (FASTQ) and a parameter manifest file (.yaml) as input and produces a table of annotated off-target sites as output. **In this version**, we added the following:
+- Multi-processing support in the UMItag, Consolidate, and Align steps. This is essential as the pipeline can take days for big FASTQ files.
     - To run the pipeline with N processes, add the flag `--n_workers N` to the execution command.
 - Skipping some steps in the GUIDE-Seq pipeline. It is useful when partial steps are already completed.
-    - To run the pipeline starting from the stage after demultiplexing/UMItaging/consolidating/aligning, add the flag `--skip_demultiple`/`--skip_umitag`/`--skip_consolidate`/`--skip_align` to the execution command.
+    - To run the pipeline, starting from the stage after demultiplexing/UMItaging/consolidating/aligning, add the flag `--skip_demultiple`/`--skip_umitag`/`--skip_consolidate`/`--skip_align` to the execution command.
 
 See [Getting Set Up](#setup) and [Running the Full Analysis Pipeline](#full_pipeline) for the recommended install for this version and an example of an execution command.
 
@@ -78,7 +78,6 @@ conda create -n guideseq -c conda-forge -c bioconda -c anaconda -c tsailabSJ gui
 source activate guideseq
 
 ## BWA and bedtools are automatically installed
-
 
 ```
 
