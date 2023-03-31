@@ -324,7 +324,7 @@ def parse_args():
     all_parser.add_argument('--skip_consolidate', action='store_true', default=False)
     all_parser.add_argument('--skip_align', action='store_true', default=False)
     all_parser.add_argument('--without_contorl', action='store_true', default=False)
-    all_parser.add_argument('--n_workers', action='store_true', default=1, type=int)
+    all_parser.add_argument('--n_workers', default=1, type=int)
 
     demultiplex_parser = subparsers.add_parser('demultiplex', help='Demultiplex undemultiplexed FASTQ files')
     demultiplex_parser.add_argument('--manifest', '-m', help='Specify the manifest path', required=True)
