@@ -168,8 +168,7 @@ class GuideSeq:
                 self.umitagged[sample]['read1'] = os.path.join(self.output_folder, 'umitagged', sample + '.r1.umitagged.fastq')
                 self.umitagged[sample]['read2'] = os.path.join(self.output_folder, 'umitagged', sample + '.r2.umitagged.fastq')
 
-
-                pool.apply_async(umitag.umitag, args=(
+                job = pool.apply_async(umitag.umitag, args=(
                     self.demultiplexed[sample]['read1'],
                     self.demultiplexed[sample]['read2'],
                     self.demultiplexed[sample]['index1'],
@@ -177,6 +176,7 @@ class GuideSeq:
                     self.umitagged[sample]['read1'],
                     self.umitagged[sample]['read2'],
                     os.path.join(self.output_folder, 'umitagged')))
+                job.get()
                 time.sleep(15) # Sleep for 15 seconds
 
             pool.close()
@@ -200,17 +200,18 @@ class GuideSeq:
                 self.consolidated[sample]['read1'] = os.path.join(self.output_folder, 'consolidated', sample + '.r1.consolidated.fastq')
                 self.consolidated[sample]['read2'] = os.path.join(self.output_folder, 'consolidated', sample + '.r2.consolidated.fastq')
 
-                pool.apply_async(consolidate_util, args=(
+                job = pool.apply_async(consolidate_util, args=(
                     self.umitagged[sample]['read1'], self.consolidated[sample]['read1'],
                     self.umitagged[sample]['read2'], self.consolidated[sample]['read2'],
                     min_qual, min_freq))
+                job.get()
                 time.sleep(15) # Sleep for 15 seconds
 
             pool.close()
             pool.join()
             logger.info('Successfully consolidated reads.')
         except Exception as e:
-            logger.error('Error umitagging')
+            logger.error('Error consolidating')
             logger.error(traceback.format_exc())
             quit()
 
@@ -224,10 +225,12 @@ class GuideSeq:
             for sample in self.samples:
                 sample_alignment_path = os.path.join(self.output_folder, 'aligned', sample + '.sam')
                 self.aligned[sample] = sample_alignment_path
-                pool.apply_async(alignReads, args=(self.BWA_path, self.reference_genome,
-                                                   self.consolidated[sample]['read1'],
-                                                   self.consolidated[sample]['read2'],
-                                                   sample_alignment_path))
+                job = pool.apply_async(alignReads, args=(
+                    self.BWA_path, self.reference_genome,
+                    self.consolidated[sample]['read1'],
+                    self.consolidated[sample]['read2'],
+                    sample_alignment_path))
+                job.get()
                 time.sleep(15) # Sleep for 15 seconds
 
             pool.close()
@@ -340,8 +343,9 @@ def parse_args():
     consolidate_parser.add_argument('--read1', required=True)
     consolidate_parser.add_argument('--read2', required=True)
     consolidate_parser.add_argument('--outfolder', required=True)
-    consolidate_parser.add_argument('--min_quality', required=False, type=float)
-    consolidate_parser.add_argument('--min_frequency', required=False, type=float)
+    consolidate_parser.add_argument('--min_quality', default=CONSOLIDATE_MIN_QUAL, type=float)
+    consolidate_parser.add_argument('--min_frequency', default=CONSOLIDATE_MIN_FREQ, type=float)
+    consolidate_parser.add_argument('--n_workers', default=1, type=int)
 
     align_parser = subparsers.add_parser('align', help='Paired end read mapping to genome')
     align_parser.add_argument('--bwa', required=True)
@@ -349,6 +353,7 @@ def parse_args():
     align_parser.add_argument('--read1', required=True)
     align_parser.add_argument('--read2', required=True)
     align_parser.add_argument('--outfolder', required=True)
+    align_parser.add_argument('--n_workers', default=1, type=int)
 
     identify_parser = subparsers.add_parser('identify', help='Identify GUIDE-seq offtargets')
     identify_parser.add_argument('--aligned', required=True)
@@ -570,18 +575,7 @@ def main():
         g.umitagged = {sample: {}}
         g.umitagged[sample]['read1'] = args.read1
         g.umitagged[sample]['read2'] = args.read2
-
-        if 'min_quality' in args:
-            min_qual = args.min_quality
-        else:
-            min_qual = CONSOLIDATE_MIN_QUAL
-
-        if 'min_frequency' in args:
-            min_freq = args.min_frequency
-        else:
-            min_freq = CONSOLIDATE_MIN_FREQ
-
-        g.consolidate(min_freq=min_freq, min_qual=min_qual, num_processes=args.n_workers)
+        g.consolidate(min_freq=args.min_frequency, min_qual=args.min_quality, num_processes=args.n_workers)
     elif args.command == 'align':
         """
         Run just the alignment step
