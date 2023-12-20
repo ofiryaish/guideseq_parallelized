@@ -13,7 +13,7 @@ logger.propagate = False
 def index(HG19_path, BWA_path):
     # Check if genome is already indexed by bwa
     index_files_extensions = ['.pac', '.amb', '.ann', '.bwt', '.sa']
-
+    
     genome_indexed = True
     for extension in index_files_extensions:
         if not os.path.isfile(HG19_path + extension):
@@ -31,14 +31,12 @@ def index(HG19_path, BWA_path):
         logger.info('BWA genome index found.')
 
 def alignReads(BWA_path, HG19_path, read1, read2, outfile):
-
     sample_name = os.path.basename(outfile).split('.')[0]
     output_folder = os.path.dirname(outfile)
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
     sample_alignment_paths = {}
-
     # Run paired end alignment against the genome
     logger.info('Running paired end mapping for {0}'.format(sample_name))
     bwa_alignment_command = '{0} mem {1} {2} {3}'.format(BWA_path,

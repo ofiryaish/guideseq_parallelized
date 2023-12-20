@@ -52,7 +52,7 @@ class GuideSeq:
 
         try:
             # Validate manifest data
-            validation.validateManifest(manifest_data)
+            validation.validateManifest(manifest_data, without_contorl)
 
             self.BWA_path = manifest_data['bwa']
             self.bedtools = manifest_data['bedtools']
@@ -264,7 +264,6 @@ class GuideSeq:
                 samfile = os.path.join(self.output_folder, 'aligned', sample + '.sam')
 
                 self.identified[sample] = os.path.join(self.output_folder, 'identified', sample + '_identifiedOfftargets.txt')
-
                 identifyOfftargetSites.analyze(samfile, self.reference_genome, self.identified[sample], annotations,
                                                self.window_size, self.max_score)
 
@@ -360,9 +359,9 @@ def parse_args():
     identify_parser.add_argument('--genome', required=True)
     identify_parser.add_argument('--outfolder', required=True)
     identify_parser.add_argument('--target_sequence', required=True)
-    identify_parser.add_argument('--description', required=False)
-    identify_parser.add_argument('--max_score', required=False, type=int, default=7)
-    identify_parser.add_argument('--window_size', required=False, type=int, default=25)
+    identify_parser.add_argument('--description', required=True)
+    identify_parser.add_argument('--max_score', default=DEFAULT_MAX_SCORE, type=int)
+    identify_parser.add_argument('--window_size', default=DEFAULT_WINDOW_SIZE, type=int)
 
     filter_parser = subparsers.add_parser('filter', help='Filter identified sites from control sites')
     filter_parser.add_argument('--bedtools', required=True)
@@ -596,29 +595,15 @@ def main():
         Run just the identify step
         python guideseq/guideseq.py identify --genome /Volumes/Media/hg38/hg38.fa --aligned test/output/aligned/EMX1.sam --outfolder test/output/ --target_sequence GAGTCCGAGCAGAAGAAGAANGG
         """
-        if 'description' in args:
-            description = args.description
-        else:
-            description = ''
-
-        if 'max_score' in args:
-            max_score = args.max_score
-        else:
-            max_score = 7
-
-        if 'window_size' in args:
-            window_size = args.window_size
-        else:
-            window_size = 25
-
+        print(args)
         g = GuideSeq()
         g.output_folder = args.outfolder
         g.reference_genome = args.genome
         sample = os.path.basename(args.aligned).split('.')[0]
-        g.samples = {sample: {'description': description, 'target': args.target_sequence}}
+        g.samples = {sample: {'description': args.description, 'target': args.target_sequence}}
         g.aligned = {sample: args.aligned}
-        g.max_score = max_score
-        g.window_size = window_size
+        g.max_score = args.max_score
+        g.window_size = args.window_size
         g.identifyOfftargetSites()
 
     elif args.command == 'filter':

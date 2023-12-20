@@ -290,7 +290,6 @@ def alignSequences(targetsite_sequence, window_sequence, max_score=7):
 annotation is in the format:
 """
 def analyze(sam_filename, reference_genome, outfile, annotations, windowsize, max_score):
-
 	output_folder = os.path.dirname(outfile)
 	if not os.path.exists(output_folder):
 		os.makedirs(output_folder)

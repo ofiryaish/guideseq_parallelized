@@ -70,9 +70,9 @@ def checkIfValidUndemultiplexed(undemultiplexed):
         sys.exit()
 
 
-def checkIfValidSamples(samples):
+def checkIfValidSamples(samples, without_contorl):
     # Check if control is one of the samples
-    if 'control' not in samples:
+    if not without_contorl and 'control' not in samples:
         logger.error('A control sample must be specified')
         sys.exit()
 
@@ -89,7 +89,7 @@ def checkIfValidSamples(samples):
             sys.exit()
 
 
-def validateManifest(manifest_data):
+def validateManifest(manifest_data, without_contorl):
     # Check if manifest contains the required fields
     fields = ['bwa', 'bedtools', 'reference_genome', 'output_folder', 'samples', 'undemultiplexed']
     missing_fields = False
@@ -107,4 +107,4 @@ def validateManifest(manifest_data):
     checkIfBinary(manifest_data['bedtools'])
     checkIfFasta(manifest_data['reference_genome'])
     checkIfValidUndemultiplexed(manifest_data['undemultiplexed'])
-    checkIfValidSamples(manifest_data['samples'])
+    checkIfValidSamples(manifest_data['samples'], without_contorl)
